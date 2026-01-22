@@ -1,13 +1,3 @@
---[[
-    ╔═══════════════════════════════════════╗
-    ║       QWEN AIMVIEWER PRO v5.2         ║
-    ║         Enhanced Edition              ║
-    ╚═══════════════════════════════════════╝
-    
-    Открыть/Закрыть: F4
-]]
-
--- Services
 local Players = game:GetService('Players')
 local UserInputService = game:GetService('UserInputService')
 local RunService = game:GetService("RunService")
@@ -16,15 +6,12 @@ local StarterGui = game:GetService('StarterGui')
 local SoundService = game:GetService("SoundService")
 local HttpService = game:GetService("HttpService")
 
--- Player Variables
 local LocalPlayer = Players.LocalPlayer
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local Camera = workspace.CurrentCamera
 
--- Script State
 local ScriptRunning = true
 
--- Obfuscated Credentials (hidden in plain sight)
 local function _0x4f2a()
     local _t = {107, 97, 105, 116, 111}
     local _r = ""
@@ -42,7 +29,6 @@ end
 local _AUTH_KEY_1 = _0x3b1c
 local _AUTH_KEY_2 = _0x4f2a
 
--- Save System
 local SAVE_FILE = "QwenAimviewerV5.json"
 
 local function SaveData(data)
@@ -67,7 +53,6 @@ local function LoadData()
     return nil
 end
 
--- Default Configuration
 local DefaultConfig = {
     HudColor = {85, 85, 105},
     BeamColor = {120, 120, 150},
@@ -102,7 +87,6 @@ local Config = {
     )
 }
 
--- Theme Colors
 local Theme = {
     Background = Color3.fromRGB(18, 18, 24),
     BackgroundSecondary = Color3.fromRGB(25, 25, 32),
@@ -160,12 +144,10 @@ local function SaveCurrentConfig()
     SaveData(data)
 end
 
--- Admin Settings (249-255)
 local ADMIN_GROUP_ID = 35699473
 local ADMIN_MIN_RANK = 249
 local ADMIN_MAX_RANK = 255
 
--- State Variables
 local IsAuthenticated = false
 local IsMenuOpen = false
 local CurrentTarget = nil
@@ -174,7 +156,6 @@ local ViewLogs = {}
 local AdminCache = {}
 local ESPUpdateConnection = nil
 
--- UI Elements Storage
 local UIElements = {
     PrimaryElements = {},
     Strokes = {},
@@ -182,7 +163,6 @@ local UIElements = {
     GradientElements = {}
 }
 
--- Sounds
 local Sounds = {}
 
 local function CreateSound(id, volume)
@@ -201,7 +181,6 @@ Sounds.Hover = CreateSound(6895079725, 0.15)
 Sounds.Alert = CreateSound(9113869830, 0.5)
 Sounds.Unload = CreateSound(6895079653, 0.5)
 
--- Animation Helper
 local function Animate(object, properties, duration, easingStyle, easingDirection, callback)
     if not object or not ScriptRunning then return nil end
     
@@ -221,7 +200,6 @@ local function Animate(object, properties, duration, easingStyle, easingDirectio
     return tween
 end
 
--- UI Component Helpers
 local function CreateCorner(parent, radius)
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, radius or 8)
@@ -351,7 +329,6 @@ local function AddHoverAnimation(button, hoverColor, normalColor)
     end)
 end
 
--- Floating Particles Effect (Beautiful Addition)
 local function CreateFloatingParticles(parent)
     for i = 1, 8 do
         local particle = Instance.new("Frame")
@@ -364,7 +341,6 @@ local function CreateFloatingParticles(parent)
         particle.Parent = parent
         CreateCorner(particle, 100)
         
-        -- Animate floating
         spawn(function()
             while ScriptRunning and particle.Parent do
                 local newY = math.random() * 0.8 + 0.1
@@ -391,7 +367,6 @@ local function CreatePulseEffect(indicator)
     end)
 end
 
--- Admin Functions (249-255)
 local function CheckIfAdmin(player)
     if AdminCache[player.UserId] ~= nil then
         return AdminCache[player.UserId].IsAdmin, AdminCache[player.UserId].Rank
@@ -2638,3 +2613,4 @@ print("╚═══════════════════════�
 print("")
 print("   ✅ Скрипт загружен! Удачной игры!")
 print("")
+
