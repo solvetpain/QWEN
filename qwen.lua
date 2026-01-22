@@ -64,7 +64,9 @@ local DefaultConfig = {
     BeamEnabled = true,
     BeamWidth = 0.12,
     AdminAlertEnabled = true,
-    AdminEspColor = {255, 180, 50}
+    AdminEspColor = {255, 180, 50},
+    KnifeHitboxEnabled = true,
+    KnifeHitboxSize = 15
 }
 
 local SavedConfig = LoadData() or DefaultConfig
@@ -84,7 +86,9 @@ local Config = {
         (SavedConfig.AdminEspColor and SavedConfig.AdminEspColor[1]) or 255,
         (SavedConfig.AdminEspColor and SavedConfig.AdminEspColor[2]) or 180,
         (SavedConfig.AdminEspColor and SavedConfig.AdminEspColor[3]) or 50
-    )
+    ),
+    KnifeHitboxEnabled = SavedConfig.KnifeHitboxEnabled ~= false,
+    KnifeHitboxSize = SavedConfig.KnifeHitboxSize or 15
 }
 
 local Theme = {
@@ -139,7 +143,9 @@ local function SaveCurrentConfig()
         EspThickness = Config.EspThickness,
         BeamEnabled = Config.BeamEnabled,
         BeamWidth = Config.BeamWidth,
-        AdminAlertEnabled = Config.AdminAlertEnabled
+        AdminAlertEnabled = Config.AdminAlertEnabled,
+        KnifeHitboxEnabled = Config.KnifeHitboxEnabled,
+        KnifeHitboxSize = Config.KnifeHitboxSize
     }
     SaveData(data)
 end
@@ -387,6 +393,127 @@ local function GetAdminRole(player)
         return player:GetRoleInGroup(ADMIN_GROUP_ID)
     end)
     return success and role or "Unknown"
+end
+
+-- ═══════════════════════════════════════════════════════════
+-- KNIFE HITBOX SYSTEM
+-- ═══════════════════════════════════════════════════════════
+
+local KnifeHitboxConnections = {}
+local OriginalSizes = {}
+
+local function ExpandKnifeHitbox(tool)
+    if not Config.KnifeHitboxEnabled then return end
+    if not tool or not tool:IsA("Tool") then return end
+    
+    local handle = tool:FindFirstChild("Handle")
+    if not handle then return end
+    
+    -- Save original size
+    if not OriginalSizes[tool] then
+        OriginalSizes[tool] = handle.Size
+    end
+    
+    -- Expand hitbox
+    local hitboxSize = Config.KnifeHitboxSize or 15
+    handle.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+    handle.Transparency = 0.9
+    handle.CanCollide = false
+    handle.Massless = true
+    
+    -- Make sure it stays expanded
+    local connection = handle:GetPropertyChangedSignal("Size"):Connect(function()
+        if Config.KnifeHitboxEnabled and ScriptRunning then
+            handle.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+        end
+    end)
+    
+    KnifeHitboxConnections[tool] = connection
+end
+
+local function RestoreKnifeHitbox(tool)
+    if not tool then return end
+    
+    local handle = tool:FindFirstChild("Handle")
+    if handle and OriginalSizes[tool] then
+        handle.Size = OriginalSizes[tool]
+        handle.Transparency = 0
+    end
+    
+    if KnifeHitboxConnections[tool] then
+        KnifeHitboxConnections[tool]:Disconnect()
+        KnifeHitboxConnections[tool] = nil
+    end
+    
+    OriginalSizes[tool] = nil
+end
+
+local function SetupKnifeHitbox()
+    -- Check current character
+    if Character then
+        for _, tool in pairs(Character:GetChildren()) do
+            if tool:IsA("Tool") and tool.Name == "Knife" then
+                ExpandKnifeHitbox(tool)
+            end
+        end
+    end
+    
+    -- Listen for tool equip
+    LocalPlayer.CharacterAdded:Connect(function(char)
+        Character = char
+        
+        char.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") and child.Name == "Knife" and ScriptRunning then
+                task.wait(0.1)
+                ExpandKnifeHitbox(child)
+            end
+        end)
+        
+        char.ChildRemoved:Connect(function(child)
+            if child:IsA("Tool") and child.Name == "Knife" then
+                RestoreKnifeHitbox(child)
+            end
+        end)
+    end)
+    
+    -- Setup for current character
+    if Character then
+        Character.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") and child.Name == "Knife" and ScriptRunning then
+                task.wait(0.1)
+                ExpandKnifeHitbox(child)
+            end
+        end)
+        
+        Character.ChildRemoved:Connect(function(child)
+            if child:IsA("Tool") and child.Name == "Knife" then
+                RestoreKnifeHitbox(child)
+            end
+        end)
+    end
+    
+    -- Also check backpack
+    LocalPlayer.Backpack.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") and child.Name == "Knife" and ScriptRunning then
+            -- Will be expanded when equipped
+        end
+    end)
+end
+
+local function UpdateAllKnifeHitboxes()
+    if not ScriptRunning then return end
+    
+    if Character then
+        for _, tool in pairs(Character:GetChildren()) do
+            if tool:IsA("Tool") and tool.Name == "Knife" then
+                if Config.KnifeHitboxEnabled then
+                    ExpandKnifeHitbox(tool)
+                else
+                    RestoreKnifeHitbox(tool)
+                end
+            end
+        end
+    end
 end
 
 -- ESP System
@@ -1367,7 +1494,7 @@ SettingsOverlay.Parent = SettingsGui
 
 local SettingsFrame = Instance.new("Frame")
 SettingsFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-SettingsFrame.Size = UDim2.new(0, 430, 0, 620)
+SettingsFrame.Size = UDim2.new(0, 430, 0, 650)
 SettingsFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 SettingsFrame.BackgroundColor3 = Theme.Background
 SettingsFrame.BorderSizePixel = 0
@@ -1411,19 +1538,20 @@ SettingsTitle.TextSize = 19
 SettingsTitle.ZIndex = 63
 SettingsTitle.Parent = SettingsHeader
 
--- Settings Content
+-- Settings Content - ИСПРАВЛЕНО: увеличен CanvasSize и добавлен отступ
 local SettingsContent = Instance.new("ScrollingFrame")
-SettingsContent.Size = UDim2.new(1, -40, 0, 410)
+SettingsContent.Size = UDim2.new(1, -40, 0, 440)
 SettingsContent.Position = UDim2.new(0, 20, 0, 90)
 SettingsContent.BackgroundTransparency = 1
-SettingsContent.ScrollBarThickness = 3
+SettingsContent.ScrollBarThickness = 4
 SettingsContent.ScrollBarImageColor3 = Theme.Primary
-SettingsContent.CanvasSize = UDim2.new(0, 0, 0, 750)
+SettingsContent.CanvasSize = UDim2.new(0, 0, 0, 950) -- УВЕЛИЧЕНО для видимости всех элементов
 SettingsContent.BorderSizePixel = 0
 SettingsContent.ZIndex = 62
 SettingsContent.Parent = SettingsFrame
 
 local SettingsLayout = CreateListLayout(SettingsContent, 12)
+CreatePadding(SettingsContent, 0, 80, 0, 0) -- Добавлен отступ снизу
 
 -- Section Label Creator
 local function CreateSectionLabel(parent, text, icon)
@@ -1492,8 +1620,8 @@ local function CreateToggle(parent, text, icon, defaultValue, callback)
     button.Text = ""
     button.ZIndex = 66
     button.Parent = container
-    
-    button.MouseButton1Click:Connect(function()
+
+	    button.MouseButton1Click:Connect(function()
         if not ScriptRunning then return end
         Sounds.Click:Play()
         enabled = not enabled
@@ -1573,7 +1701,7 @@ local function CreateSlider(parent, text, icon, minVal, maxVal, defaultValue, ca
     sliderButton.ZIndex = 66
     sliderButton.Parent = sliderBg
 
-        local isDragging = false
+    local isDragging = false
     
     sliderButton.MouseButton1Down:Connect(function()
         isDragging = true
@@ -1832,6 +1960,20 @@ CreateRGBSlider(SettingsContent, "Цвет луча", "🌈", Config.BeamColor, 
     SaveCurrentConfig()
 end)
 
+CreateSectionLabel(SettingsContent, "НОЖ ХИТБОКС", "🔪")
+
+CreateToggle(SettingsContent, "Расширить хитбокс ножа", "🗡", Config.KnifeHitboxEnabled, function(value)
+    Config.KnifeHitboxEnabled = value
+    UpdateAllKnifeHitboxes()
+    SaveCurrentConfig()
+end)
+
+CreateSlider(SettingsContent, "Размер хитбокса", "📐", 5, 50, Config.KnifeHitboxSize, function(value)
+    Config.KnifeHitboxSize = value
+    UpdateAllKnifeHitboxes()
+    SaveCurrentConfig()
+end)
+
 CreateSectionLabel(SettingsContent, "ИНТЕРФЕЙС", "🎭")
 
 CreateRGBSlider(SettingsContent, "Цвет темы", "🖌", Config.HudColor, function(color)
@@ -1872,6 +2014,13 @@ CreateDangerButton(SettingsContent, "ВЫГРУЗИТЬ СКРИПТ", "🗑", f
     UnloadScript()
 end)
 
+-- Spacer для дополнительного пространства внизу
+local BottomSpacer = Instance.new("Frame")
+BottomSpacer.Size = UDim2.new(1, 0, 0, 30)
+BottomSpacer.BackgroundTransparency = 1
+BottomSpacer.ZIndex = 63
+BottomSpacer.Parent = SettingsContent
+
 -- Save Button
 local SaveSettingsBtn = Instance.new("TextButton")
 SaveSettingsBtn.Size = UDim2.new(1, -40, 0, 52)
@@ -1882,7 +2031,7 @@ SaveSettingsBtn.Text = "💾 СОХРАНИТЬ И ЗАКРЫТЬ"
 SaveSettingsBtn.TextColor3 = Theme.Text
 SaveSettingsBtn.TextSize = 15
 SaveSettingsBtn.AutoButtonColor = false
-SaveSettingsBtn.ZIndex = 63
+SaveSettingsBtn.ZIndex = 70
 SaveSettingsBtn.Parent = SettingsFrame
 table.insert(UIElements.PrimaryElements, SaveSettingsBtn)
 
@@ -1908,6 +2057,13 @@ SaveSettingsBtn.MouseButton1Click:Connect(function()
     task.wait(0.5)
     SettingsGui.Enabled = false
     SettingsFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+end)
+
+-- Обновление CanvasSize после добавления всех элементов
+task.delay(0.5, function()
+    if SettingsContent and SettingsLayout then
+        SettingsContent.CanvasSize = UDim2.new(0, 0, 0, SettingsLayout.AbsoluteContentSize.Y + 100)
+    end
 end)
 
 -- ═══════════════════════════════════════════════════════════
@@ -2331,6 +2487,11 @@ function UnloadScript()
         end
     end
     
+    -- Restore knife hitboxes
+    for tool, _ in pairs(KnifeHitboxConnections) do
+        RestoreKnifeHitbox(tool)
+    end
+    
     -- Remove all ESP
     for userId, objects in pairs(ESPObjects) do
         for _, obj in pairs(objects) do
@@ -2410,11 +2571,12 @@ LoginButton.MouseButton1Click:Connect(function()
         RefreshAllESP()
         CheckAllAdmins()
         StartESPUpdateLoop()
+        SetupKnifeHitbox()
         
         pcall(function()
             StarterGui:SetCore("SendNotification", {
                 Title = "👁 Qwen Aimviewer v5.2",
-                Text = "Добро пожаловать! ESP обновляется каждую секунду",
+                Text = "Добро пожаловать! Хитбокс ножа активен!",
                 Duration = 3
             })
         end)
@@ -2544,6 +2706,16 @@ end)
 -- Character Respawn
 LocalPlayer.CharacterAdded:Connect(function(newCharacter)
     Character = newCharacter
+    
+    -- Re-setup knife hitbox for new character
+    task.wait(1)
+    if ScriptRunning and Config.KnifeHitboxEnabled then
+        for _, tool in pairs(newCharacter:GetChildren()) do
+            if tool:IsA("Tool") and tool.Name == "Knife" then
+                ExpandKnifeHitbox(tool)
+            end
+        end
+    end
 end)
 
 -- Beam Render Loop
@@ -2602,6 +2774,7 @@ print("║                                                       ║")
 print("║   ✨ Новое в v5.2:                                    ║")
 print("║   • ESP обновляется каждую секунду                    ║")
 print("║   • Кнопка выгрузки в настройках                      ║")
+print("║   • 🔪 ХИТБОКС НОЖА (до 50 studs!)                    ║")
 print("║   • Красивые градиенты и анимации                     ║")
 print("║   • Плавающие частицы                                 ║")
 print("║   • Пульсирующие индикаторы                           ║")
@@ -2613,4 +2786,3 @@ print("╚═══════════════════════�
 print("")
 print("   ✅ Скрипт загружен! Удачной игры!")
 print("")
-
