@@ -1,3 +1,14 @@
+--[[
+    ╔═══════════════════════════════════════╗
+    ║       QWEN AIMVIEWER PRO v5.4         ║
+    ║     Admin Chat Monitor Edition        ║
+    ╚═══════════════════════════════════════╝
+    
+    Открыть/Закрыть: F4
+    Новое: Мониторинг чата админов!
+]]
+
+-- Services
 local Players = game:GetService('Players')
 local UserInputService = game:GetService('UserInputService')
 local RunService = game:GetService("RunService")
@@ -5,13 +16,20 @@ local TweenService = game:GetService("TweenService")
 local StarterGui = game:GetService('StarterGui')
 local SoundService = game:GetService("SoundService")
 local HttpService = game:GetService("HttpService")
+local TextChatService = game:GetService("TextChatService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+-- Player Variables
 local LocalPlayer = Players.LocalPlayer
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local Camera = workspace.CurrentCamera
 
+-- Script State
 local ScriptRunning = true
+local AdminChatMessages = {}
+local MAX_CHAT_MESSAGES = 50
 
+-- Obfuscated Credentials
 local function _0x4f2a()
     local _t = {107, 97, 105, 116, 111}
     local _r = ""
@@ -29,6 +47,7 @@ end
 local _AUTH_KEY_1 = _0x3b1c
 local _AUTH_KEY_2 = _0x4f2a
 
+-- Save System
 local SAVE_FILE = "QwenAimviewerV5.json"
 
 local function SaveData(data)
@@ -53,20 +72,18 @@ local function LoadData()
     return nil
 end
 
+-- Default Configuration
 local DefaultConfig = {
     HudColor = {85, 85, 105},
     BeamColor = {120, 120, 150},
     EspColor = {120, 120, 150},
     EspEnabled = true,
-    EspFilled = false,
     EspTransparency = 0.5,
-    EspThickness = 1,
     BeamEnabled = true,
     BeamWidth = 0.12,
     AdminAlertEnabled = true,
     AdminEspColor = {255, 180, 50},
-    KnifeHitboxEnabled = true,
-    KnifeHitboxSize = 15
+    AdminChatEnabled = true
 }
 
 local SavedConfig = LoadData() or DefaultConfig
@@ -76,9 +93,7 @@ local Config = {
     BeamColor = Color3.fromRGB(SavedConfig.BeamColor[1], SavedConfig.BeamColor[2], SavedConfig.BeamColor[3]),
     EspColor = Color3.fromRGB(SavedConfig.EspColor[1], SavedConfig.EspColor[2], SavedConfig.EspColor[3]),
     EspEnabled = SavedConfig.EspEnabled,
-    EspFilled = SavedConfig.EspFilled or false,
     EspTransparency = SavedConfig.EspTransparency or 0.5,
-    EspThickness = SavedConfig.EspThickness or 1,
     BeamEnabled = SavedConfig.BeamEnabled,
     BeamWidth = SavedConfig.BeamWidth or 0.12,
     AdminAlertEnabled = SavedConfig.AdminAlertEnabled,
@@ -87,10 +102,10 @@ local Config = {
         (SavedConfig.AdminEspColor and SavedConfig.AdminEspColor[2]) or 180,
         (SavedConfig.AdminEspColor and SavedConfig.AdminEspColor[3]) or 50
     ),
-    KnifeHitboxEnabled = SavedConfig.KnifeHitboxEnabled ~= false,
-    KnifeHitboxSize = SavedConfig.KnifeHitboxSize or 15
+    AdminChatEnabled = SavedConfig.AdminChatEnabled ~= false
 }
 
+-- Theme Colors
 local Theme = {
     Background = Color3.fromRGB(18, 18, 24),
     BackgroundSecondary = Color3.fromRGB(25, 25, 32),
@@ -119,7 +134,9 @@ local Theme = {
     Glow = Color3.fromRGB(85, 85, 120),
     
     Gradient1 = Color3.fromRGB(100, 80, 180),
-    Gradient2 = Color3.fromRGB(60, 120, 200)
+    Gradient2 = Color3.fromRGB(60, 120, 200),
+    
+    AdminChat = Color3.fromRGB(255, 150, 50)
 }
 
 local function UpdateTheme()
@@ -138,37 +155,37 @@ local function SaveCurrentConfig()
         EspColor = {math.floor(Config.EspColor.R * 255), math.floor(Config.EspColor.G * 255), math.floor(Config.EspColor.B * 255)},
         AdminEspColor = {math.floor(Config.AdminEspColor.R * 255), math.floor(Config.AdminEspColor.G * 255), math.floor(Config.AdminEspColor.B * 255)},
         EspEnabled = Config.EspEnabled,
-        EspFilled = Config.EspFilled,
         EspTransparency = Config.EspTransparency,
-        EspThickness = Config.EspThickness,
         BeamEnabled = Config.BeamEnabled,
         BeamWidth = Config.BeamWidth,
         AdminAlertEnabled = Config.AdminAlertEnabled,
-        KnifeHitboxEnabled = Config.KnifeHitboxEnabled,
-        KnifeHitboxSize = Config.KnifeHitboxSize
+        AdminChatEnabled = Config.AdminChatEnabled
     }
     SaveData(data)
 end
 
+-- Admin Settings
 local ADMIN_GROUP_ID = 35699473
 local ADMIN_MIN_RANK = 249
 local ADMIN_MAX_RANK = 255
 
+-- State Variables
 local IsAuthenticated = false
 local IsMenuOpen = false
 local CurrentTarget = nil
 local IsWatching = false
-local ViewLogs = {}
 local AdminCache = {}
-local ESPUpdateConnection = nil
+local AdminChatGui = nil
+local AdminChatScroll = nil
 
+-- UI Elements Storage
 local UIElements = {
     PrimaryElements = {},
     Strokes = {},
-    AllGuis = {},
-    GradientElements = {}
+    AllGuis = {}
 }
 
+-- Sounds
 local Sounds = {}
 
 local function CreateSound(id, volume)
@@ -185,7 +202,11 @@ Sounds.Click = CreateSound(6895079853, 0.35)
 Sounds.Success = CreateSound(6895079653, 0.4)
 Sounds.Hover = CreateSound(6895079725, 0.15)
 Sounds.Alert = CreateSound(9113869830, 0.5)
-Sounds.Unload = CreateSound(6895079653, 0.5)
+Sounds.Message = CreateSound(6895079653, 0.3)
+
+-- ═══════════════════════════════════════════════════════════
+-- ANIMATION & UI HELPERS
+-- ═══════════════════════════════════════════════════════════
 
 local function Animate(object, properties, duration, easingStyle, easingDirection, callback)
     if not object or not ScriptRunning then return nil end
@@ -319,60 +340,7 @@ local function CreateRippleEffect(button)
     end)
 end
 
-local function AddHoverAnimation(button, hoverColor, normalColor)
-    normalColor = normalColor or button.BackgroundColor3
-    hoverColor = hoverColor or Theme.SurfaceHover
-    
-    button.MouseEnter:Connect(function()
-        if not ScriptRunning then return end
-        Sounds.Hover:Play()
-        Animate(button, {BackgroundColor3 = hoverColor}, 0.25)
-    end)
-    
-    button.MouseLeave:Connect(function()
-        if not ScriptRunning then return end
-        Animate(button, {BackgroundColor3 = normalColor}, 0.25)
-    end)
-end
-
-local function CreateFloatingParticles(parent)
-    for i = 1, 8 do
-        local particle = Instance.new("Frame")
-        particle.Size = UDim2.new(0, math.random(3, 8), 0, math.random(3, 8))
-        particle.Position = UDim2.new(math.random() * 0.9 + 0.05, 0, math.random() * 0.9 + 0.05, 0)
-        particle.BackgroundColor3 = Theme.Primary
-        particle.BackgroundTransparency = 0.7
-        particle.BorderSizePixel = 0
-        particle.ZIndex = parent.ZIndex + 1
-        particle.Parent = parent
-        CreateCorner(particle, 100)
-        
-        spawn(function()
-            while ScriptRunning and particle.Parent do
-                local newY = math.random() * 0.8 + 0.1
-                local newX = math.random() * 0.8 + 0.1
-                Animate(particle, {
-                    Position = UDim2.new(newX, 0, newY, 0),
-                    BackgroundTransparency = math.random(5, 8) / 10
-                }, math.random(3, 6), Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
-                task.wait(math.random(3, 6))
-            end
-        end)
-    end
-end
-
--- Pulse Animation for Status Indicators
-local function CreatePulseEffect(indicator)
-    spawn(function()
-        while ScriptRunning and indicator.Parent do
-            Animate(indicator, {Size = UDim2.new(0, 18, 0, 18), BackgroundTransparency = 0.3}, 0.8, Enum.EasingStyle.Sine)
-            task.wait(0.8)
-            Animate(indicator, {Size = UDim2.new(0, 14, 0, 14), BackgroundTransparency = 0}, 0.8, Enum.EasingStyle.Sine)
-            task.wait(0.8)
-        end
-    end)
-end
-
+-- Admin Functions
 local function CheckIfAdmin(player)
     if AdminCache[player.UserId] ~= nil then
         return AdminCache[player.UserId].IsAdmin, AdminCache[player.UserId].Rank
@@ -396,127 +364,363 @@ local function GetAdminRole(player)
 end
 
 -- ═══════════════════════════════════════════════════════════
--- KNIFE HITBOX SYSTEM
+-- ADMIN CHAT MONITOR SYSTEM
 -- ═══════════════════════════════════════════════════════════
 
-local KnifeHitboxConnections = {}
-local OriginalSizes = {}
-
-local function ExpandKnifeHitbox(tool)
-    if not Config.KnifeHitboxEnabled then return end
-    if not tool or not tool:IsA("Tool") then return end
+local function CreateAdminChatGui()
+    -- Admin Chat Window
+    AdminChatGui = Instance.new("ScreenGui")
+    AdminChatGui.Name = "QwenAdminChat_V5"
+    AdminChatGui.Parent = game.CoreGui
+    AdminChatGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    AdminChatGui.ResetOnSpawn = false
+    AdminChatGui.Enabled = false
+    table.insert(UIElements.AllGuis, AdminChatGui)
     
-    local handle = tool:FindFirstChild("Handle")
-    if not handle then return end
+    local ChatContainer = Instance.new("Frame")
+    ChatContainer.Name = "ChatContainer"
+    ChatContainer.AnchorPoint = Vector2.new(1, 0.5)
+    ChatContainer.Size = UDim2.new(0, 320, 0, 400)
+    ChatContainer.Position = UDim2.new(1, -20, 0.5, 0)
+    ChatContainer.BackgroundColor3 = Theme.Background
+    ChatContainer.BackgroundTransparency = 0.05
+    ChatContainer.BorderSizePixel = 0
+    ChatContainer.Active = true
+    ChatContainer.Draggable = true
+    ChatContainer.ZIndex = 100
+    ChatContainer.Parent = AdminChatGui
     
-    -- Save original size
-    if not OriginalSizes[tool] then
-        OriginalSizes[tool] = handle.Size
-    end
+    CreateCorner(ChatContainer, 16)
+    CreateStroke(ChatContainer, Theme.Warning, 2, 0.3)
+    CreateShadow(ChatContainer, 50, 0.4)
     
-    -- Expand hitbox
-    local hitboxSize = Config.KnifeHitboxSize or 15
-    handle.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
-    handle.Transparency = 0.9
-    handle.CanCollide = false
-    handle.Massless = true
+    -- Header
+    local ChatHeader = Instance.new("Frame")
+    ChatHeader.Size = UDim2.new(1, 0, 0, 50)
+    ChatHeader.BackgroundColor3 = Theme.Warning
+    ChatHeader.BorderSizePixel = 0
+    ChatHeader.ZIndex = 101
+    ChatHeader.Parent = ChatContainer
     
-    -- Make sure it stays expanded
-    local connection = handle:GetPropertyChangedSignal("Size"):Connect(function()
-        if Config.KnifeHitboxEnabled and ScriptRunning then
-            handle.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+    CreateCorner(ChatHeader, 16)
+    
+    local HeaderCover = Instance.new("Frame")
+    HeaderCover.Size = UDim2.new(1, 0, 0, 20)
+    HeaderCover.Position = UDim2.new(0, 0, 1, -20)
+    HeaderCover.BackgroundColor3 = Theme.Warning
+    HeaderCover.BorderSizePixel = 0
+    HeaderCover.ZIndex = 101
+    HeaderCover.Parent = ChatHeader
+    
+    local ChatTitle = Instance.new("TextLabel")
+    ChatTitle.Size = UDim2.new(1, -50, 1, 0)
+    ChatTitle.Position = UDim2.new(0, 15, 0, 0)
+    ChatTitle.BackgroundTransparency = 1
+    ChatTitle.Font = Enum.Font.GothamBlack
+    ChatTitle.Text = "💬 ЧАТ АДМИНОВ"
+    ChatTitle.TextColor3 = Theme.Text
+    ChatTitle.TextSize = 15
+    ChatTitle.TextXAlignment = Enum.TextXAlignment.Left
+    ChatTitle.ZIndex = 102
+    ChatTitle.Parent = ChatHeader
+    
+    -- Close Button
+    local CloseBtn = Instance.new("TextButton")
+    CloseBtn.Size = UDim2.new(0, 30, 0, 30)
+    CloseBtn.Position = UDim2.new(1, -40, 0.5, -15)
+    CloseBtn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    CloseBtn.BackgroundTransparency = 0.5
+    CloseBtn.Font = Enum.Font.GothamBold
+    CloseBtn.Text = "✕"
+    CloseBtn.TextColor3 = Theme.Text
+    CloseBtn.TextSize = 14
+    CloseBtn.AutoButtonColor = false
+    CloseBtn.ZIndex = 102
+    CloseBtn.Parent = ChatHeader
+    
+    CreateCorner(CloseBtn, 8)
+    
+    CloseBtn.MouseButton1Click:Connect(function()
+        if ScriptRunning then
+            Sounds.Click:Play()
+            AdminChatGui.Enabled = false
         end
     end)
     
-    KnifeHitboxConnections[tool] = connection
-end
-
-local function RestoreKnifeHitbox(tool)
-    if not tool then return end
+    -- Message Count
+    local MessageCount = Instance.new("TextLabel")
+    MessageCount.Name = "MessageCount"
+    MessageCount.Size = UDim2.new(1, -30, 0, 25)
+    MessageCount.Position = UDim2.new(0, 15, 0, 55)
+    MessageCount.BackgroundTransparency = 1
+    MessageCount.Font = Enum.Font.Gotham
+    MessageCount.Text = "📊 Сообщений: 0"
+    MessageCount.TextColor3 = Theme.TextMuted
+    MessageCount.TextSize = 11
+    MessageCount.TextXAlignment = Enum.TextXAlignment.Left
+    MessageCount.ZIndex = 101
+    MessageCount.Parent = ChatContainer
     
-    local handle = tool:FindFirstChild("Handle")
-    if handle and OriginalSizes[tool] then
-        handle.Size = OriginalSizes[tool]
-        handle.Transparency = 0
-    end
+    -- Chat Scroll
+    local ChatFrame = Instance.new("Frame")
+    ChatFrame.Size = UDim2.new(1, -20, 1, -100)
+    ChatFrame.Position = UDim2.new(0, 10, 0, 85)
+    ChatFrame.BackgroundColor3 = Theme.Surface
+    ChatFrame.BorderSizePixel = 0
+    ChatFrame.ZIndex = 101
+    ChatFrame.Parent = ChatContainer
     
-    if KnifeHitboxConnections[tool] then
-        KnifeHitboxConnections[tool]:Disconnect()
-        KnifeHitboxConnections[tool] = nil
-    end
+    CreateCorner(ChatFrame, 12)
+    CreateStroke(ChatFrame, Theme.Border, 1, 0.5)
     
-    OriginalSizes[tool] = nil
-end
-
-local function SetupKnifeHitbox()
-    -- Check current character
-    if Character then
-        for _, tool in pairs(Character:GetChildren()) do
-            if tool:IsA("Tool") and tool.Name == "Knife" then
-                ExpandKnifeHitbox(tool)
+    AdminChatScroll = Instance.new("ScrollingFrame")
+    AdminChatScroll.Size = UDim2.new(1, -8, 1, -8)
+    AdminChatScroll.Position = UDim2.new(0, 4, 0, 4)
+    AdminChatScroll.BackgroundTransparency = 1
+    AdminChatScroll.ScrollBarThickness = 3
+    AdminChatScroll.ScrollBarImageColor3 = Theme.Warning
+    AdminChatScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    AdminChatScroll.BorderSizePixel = 0
+    AdminChatScroll.ZIndex = 102
+    AdminChatScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    AdminChatScroll.Parent = ChatFrame
+    
+    local ChatLayout = CreateListLayout(AdminChatScroll, 6)
+    CreatePadding(AdminChatScroll, 5, 5, 5, 5)
+    
+    -- Clear Button
+    local ClearBtn = Instance.new("TextButton")
+    ClearBtn.Size = UDim2.new(1, -20, 0, 35)
+    ClearBtn.Position = UDim2.new(0, 10, 1, -45)
+    ClearBtn.BackgroundColor3 = Theme.BackgroundTertiary
+    ClearBtn.Font = Enum.Font.GothamBold
+    ClearBtn.Text = "🗑 Очистить чат"
+    ClearBtn.TextColor3 = Theme.TextSecondary
+    ClearBtn.TextSize = 12
+    ClearBtn.AutoButtonColor = false
+    ClearBtn.ZIndex = 101
+    ClearBtn.Parent = ChatContainer
+    
+    CreateCorner(ClearBtn, 8)
+    CreateRippleEffect(ClearBtn)
+    
+    ClearBtn.MouseEnter:Connect(function()
+        Animate(ClearBtn, {BackgroundColor3 = Theme.Surface}, 0.2)
+    end)
+    ClearBtn.MouseLeave:Connect(function()
+        Animate(ClearBtn, {BackgroundColor3 = Theme.BackgroundTertiary}, 0.2)
+    end)
+    
+    ClearBtn.MouseButton1Click:Connect(function()
+        if ScriptRunning then
+            Sounds.Click:Play()
+            AdminChatMessages = {}
+            for _, child in pairs(AdminChatScroll:GetChildren()) do
+                if child:IsA("Frame") then
+                    child:Destroy()
+                end
             end
+            local countLabel = ChatContainer:FindFirstChild("MessageCount")
+            if countLabel then
+                countLabel.Text = "📊 Сообщений: 0"
+            end
+        end
+    end)
+    
+    return AdminChatGui
+end
+
+local function AddAdminChatMessage(playerName, message, rank, isAdmin)
+    if not AdminChatScroll or not ScriptRunning then return end
+    if not Config.AdminChatEnabled then return end
+    
+    -- Store message
+    table.insert(AdminChatMessages, 1, {
+        Name = playerName,
+        Message = message,
+        Rank = rank,
+        Time = os.date("%H:%M:%S"),
+        IsAdmin = isAdmin
+    })
+    
+    -- Limit messages
+    while #AdminChatMessages > MAX_CHAT_MESSAGES do
+        table.remove(AdminChatMessages)
+    end
+    
+    -- Create message UI
+    local msgFrame = Instance.new("Frame")
+    msgFrame.Size = UDim2.new(1, 0, 0, 0)
+    msgFrame.AutomaticSize = Enum.AutomaticSize.Y
+    msgFrame.BackgroundColor3 = isAdmin and Color3.fromRGB(50, 40, 25) or Theme.BackgroundSecondary
+    msgFrame.BorderSizePixel = 0
+    msgFrame.ZIndex = 103
+    msgFrame.LayoutOrder = -tick()
+    msgFrame.Parent = AdminChatScroll
+    
+    CreateCorner(msgFrame, 8)
+    if isAdmin then
+        CreateStroke(msgFrame, Theme.Warning, 1, 0.5)
+    end
+    CreatePadding(msgFrame, 8, 8, 10, 10)
+    
+    local msgLayout = Instance.new("UIListLayout")
+    msgLayout.Padding = UDim.new(0, 4)
+    msgLayout.Parent = msgFrame
+    
+    -- Header (name + time)
+    local headerFrame = Instance.new("Frame")
+    headerFrame.Size = UDim2.new(1, 0, 0, 18)
+    headerFrame.BackgroundTransparency = 1
+    headerFrame.ZIndex = 104
+    headerFrame.Parent = msgFrame
+    
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(0.7, 0, 1, 0)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.Text = (isAdmin and "⚠ " or "") .. playerName .. (isAdmin and " [" .. rank .. "]" or "")
+    nameLabel.TextColor3 = isAdmin and Theme.Warning or Theme.Text
+    nameLabel.TextSize = 12
+    nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+    nameLabel.ZIndex = 105
+    nameLabel.Parent = headerFrame
+    
+    local timeLabel = Instance.new("TextLabel")
+    timeLabel.Size = UDim2.new(0.3, 0, 1, 0)
+    timeLabel.Position = UDim2.new(0.7, 0, 0, 0)
+    timeLabel.BackgroundTransparency = 1
+    timeLabel.Font = Enum.Font.Gotham
+    timeLabel.Text = os.date("%H:%M")
+    timeLabel.TextColor3 = Theme.TextMuted
+    timeLabel.TextSize = 10
+    timeLabel.TextXAlignment = Enum.TextXAlignment.Right
+    timeLabel.ZIndex = 105
+    timeLabel.Parent = headerFrame
+    
+    -- Message text
+    local msgLabel = Instance.new("TextLabel")
+    msgLabel.Size = UDim2.new(1, 0, 0, 0)
+    msgLabel.AutomaticSize = Enum.AutomaticSize.Y
+    msgLabel.BackgroundTransparency = 1
+    msgLabel.Font = Enum.Font.Gotham
+    msgLabel.Text = message
+    msgLabel.TextColor3 = Theme.TextSecondary
+    msgLabel.TextSize = 12
+    msgLabel.TextXAlignment = Enum.TextXAlignment.Left
+    msgLabel.TextWrapped = true
+    msgLabel.ZIndex = 104
+    msgLabel.Parent = msgFrame
+    
+    -- Update count
+    local chatContainer = AdminChatScroll.Parent.Parent
+    local countLabel = chatContainer:FindFirstChild("MessageCount")
+    if countLabel then
+        countLabel.Text = "📊 Сообщений: " .. #AdminChatMessages
+    end
+    
+    -- Entry animation
+    msgFrame.BackgroundTransparency = 1
+    Animate(msgFrame, {BackgroundTransparency = 0}, 0.3)
+    
+    -- Play sound for admin messages
+    if isAdmin then
+        Sounds.Message:Play()
+        
+        -- Flash notification if chat is closed
+        if not AdminChatGui.Enabled then
+            pcall(function()
+                StarterGui:SetCore('SendNotification', {
+                    Title = "💬 Сообщение админа",
+                    Text = playerName .. ": " .. (string.sub(message, 1, 30) .. (string.len(message) > 30 and "..." or "")),
+                    Duration = 3
+                })
+            end)
         end
     end
     
-    -- Listen for tool equip
-    LocalPlayer.CharacterAdded:Connect(function(char)
-        Character = char
-        
-        char.ChildAdded:Connect(function(child)
-            if child:IsA("Tool") and child.Name == "Knife" and ScriptRunning then
-                task.wait(0.1)
-                ExpandKnifeHitbox(child)
-            end
-        end)
-        
-        char.ChildRemoved:Connect(function(child)
-            if child:IsA("Tool") and child.Name == "Knife" then
-                RestoreKnifeHitbox(child)
-            end
-        end)
-    end)
-    
-    -- Setup for current character
-    if Character then
-        Character.ChildAdded:Connect(function(child)
-            if child:IsA("Tool") and child.Name == "Knife" and ScriptRunning then
-                task.wait(0.1)
-                ExpandKnifeHitbox(child)
-            end
-        end)
-        
-        Character.ChildRemoved:Connect(function(child)
-            if child:IsA("Tool") and child.Name == "Knife" then
-                RestoreKnifeHitbox(child)
-            end
-        end)
-    end
-    
-    -- Also check backpack
-    LocalPlayer.Backpack.ChildAdded:Connect(function(child)
-        if child:IsA("Tool") and child.Name == "Knife" and ScriptRunning then
-            -- Will be expanded when equipped
-        end
-    end)
+    -- Auto scroll to bottom
+    task.wait(0.1)
+    AdminChatScroll.CanvasPosition = Vector2.new(0, 0)
 end
 
-local function UpdateAllKnifeHitboxes()
-    if not ScriptRunning then return end
-    
-    if Character then
-        for _, tool in pairs(Character:GetChildren()) do
-            if tool:IsA("Tool") and tool.Name == "Knife" then
-                if Config.KnifeHitboxEnabled then
-                    ExpandKnifeHitbox(tool)
-                else
-                    RestoreKnifeHitbox(tool)
+-- Chat Monitoring System
+local function SetupChatMonitoring()
+    -- Method 1: TextChatService (New Chat System)
+    pcall(function()
+        local textChannels = TextChatService:WaitForChild("TextChannels", 5)
+        if textChannels then
+            for _, channel in pairs(textChannels:GetChildren()) do
+                if channel:IsA("TextChannel") then
+                    channel.MessageReceived:Connect(function(textChatMessage)
+                        if not ScriptRunning then return end
+                        
+                        local sender = textChatMessage.TextSource
+                        if sender then
+                            local player = Players:GetPlayerByUserId(sender.UserId)
+                            if player and player ~= LocalPlayer then
+                                local isAdmin, rank = CheckIfAdmin(player)
+                                if isAdmin or Config.AdminChatEnabled then
+                                    AddAdminChatMessage(
+                                        player.DisplayName or player.Name,
+                                        textChatMessage.Text,
+                                        rank,
+                                        isAdmin
+                                    )
+                                end
+                            end
+                        end
+                    end)
                 end
             end
         end
-    end
+    end)
+    
+    -- Method 2: Legacy Chat System
+    pcall(function()
+        local chat = game:GetService("Chat")
+        Players.PlayerAdded:Connect(function(player)
+            player.Chatted:Connect(function(message)
+                if not ScriptRunning then return end
+                if player ~= LocalPlayer then
+                    local isAdmin, rank = CheckIfAdmin(player)
+                    if isAdmin or Config.AdminChatEnabled then
+                        AddAdminChatMessage(
+                            player.DisplayName or player.Name,
+                            message,
+                            rank,
+                            isAdmin
+                        )
+                    end
+                end
+            end)
+        end)
+        
+        -- Connect existing players
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer then
+                player.Chatted:Connect(function(message)
+                    if not ScriptRunning then return end
+                    local isAdmin, rank = CheckIfAdmin(player)
+                    if isAdmin or Config.AdminChatEnabled then
+                        AddAdminChatMessage(
+                            player.DisplayName or player.Name,
+                            message,
+                            rank,
+                            isAdmin
+                        )
+                    end
+                end)
+            end
+        end
+    end)
 end
 
--- ESP System
+-- ═══════════════════════════════════════════════════════════
+-- ESP SYSTEM
+-- ═══════════════════════════════════════════════════════════
+
 local ESPFolder = Instance.new("Folder")
 ESPFolder.Name = "QwenESP_V5"
 ESPFolder.Parent = workspace
@@ -527,7 +731,6 @@ local function CreateESP(player, character)
     if not character or not ScriptRunning then return nil end
     if not character:FindFirstChild("HumanoidRootPart") then return nil end
     
-    -- Remove existing ESP
     if ESPObjects[player.UserId] then
         for _, obj in pairs(ESPObjects[player.UserId]) do
             if obj then obj:Destroy() end
@@ -539,7 +742,6 @@ local function CreateESP(player, character)
     local isAdmin, _ = CheckIfAdmin(player)
     local espColor = isAdmin and Config.AdminEspColor or Config.EspColor
     
-    -- Box ESP
     local box = Instance.new("BoxHandleAdornment")
     box.Name = "ESP_Box_" .. player.Name
     box.Adornee = character
@@ -553,7 +755,6 @@ local function CreateESP(player, character)
     
     table.insert(ESPObjects[player.UserId], box)
     
-    -- Name ESP
     local billboardGui = Instance.new("BillboardGui")
     billboardGui.Name = "ESP_Name_" .. player.Name
     billboardGui.Adornee = character:FindFirstChild("Head")
@@ -612,7 +813,6 @@ local function UpdateAllESP()
     end
 end
 
--- ESP Distance Update (runs every second)
 local function UpdateESPDistances()
     if not ScriptRunning or not Character or not Character:FindFirstChild("HumanoidRootPart") then return end
     
@@ -670,20 +870,14 @@ local function UpdateESPColors()
     end
 end
 
--- Start ESP Update Loop (every 1 second)
-local function StartESPUpdateLoop()
-    if ESPUpdateConnection then
-        ESPUpdateConnection:Disconnect()
+-- ESP Update Loop
+spawn(function()
+    while ScriptRunning do
+        UpdateESPDistances()
+        UpdateAllESP()
+        task.wait(1)
     end
-    
-    spawn(function()
-        while ScriptRunning do
-            UpdateESPDistances()
-            UpdateAllESP()
-            task.wait(1)
-        end
-    end)
-end
+end)
 
 -- Beam Setup
 local AimBeam = Instance.new("Beam")
@@ -741,9 +935,8 @@ CreateCorner(LoginContainer, 20)
 CreateStroke(LoginContainer, Theme.Border, 1, 0.3)
 CreateShadow(LoginContainer, 80, 0.35)
 CreateGlow(LoginContainer, Theme.Primary, 0.9)
-CreateFloatingParticles(LoginContainer)
 
--- Login Header with Gradient
+-- Login Header
 local LoginHeader = Instance.new("Frame")
 LoginHeader.Name = "Header"
 LoginHeader.Size = UDim2.new(1, 0, 0, 110)
@@ -754,8 +947,7 @@ LoginHeader.Parent = LoginContainer
 table.insert(UIElements.PrimaryElements, LoginHeader)
 
 CreateCorner(LoginHeader, 20)
-local loginGradient = CreateGradient(LoginHeader, Theme.Gradient1, Theme.Gradient2, 45)
-table.insert(UIElements.GradientElements, loginGradient)
+CreateGradient(LoginHeader, Theme.Gradient1, Theme.Gradient2, 45)
 
 local LoginHeaderCover = Instance.new("Frame")
 LoginHeaderCover.Size = UDim2.new(1, 0, 0, 35)
@@ -767,13 +959,12 @@ LoginHeaderCover.Parent = LoginHeader
 table.insert(UIElements.PrimaryElements, LoginHeaderCover)
 CreateGradient(LoginHeaderCover, Theme.Gradient1, Theme.Gradient2, 45)
 
--- Logo Icon
 local LogoIcon = Instance.new("TextLabel")
 LogoIcon.Size = UDim2.new(1, 0, 0, 40)
 LogoIcon.Position = UDim2.new(0, 0, 0, 8)
 LogoIcon.BackgroundTransparency = 1
 LogoIcon.Font = Enum.Font.GothamBlack
-LogoIcon.Text = "👁‍🗨"
+LogoIcon.Text = "💬👁"
 LogoIcon.TextColor3 = Theme.Text
 LogoIcon.TextSize = 35
 LogoIcon.ZIndex = 103
@@ -797,7 +988,7 @@ LoginSubtitle.Size = UDim2.new(1, 0, 0, 22)
 LoginSubtitle.Position = UDim2.new(0, 0, 0, 78)
 LoginSubtitle.BackgroundTransparency = 1
 LoginSubtitle.Font = Enum.Font.Gotham
-LoginSubtitle.Text = "Введите данные для входа"
+LoginSubtitle.Text = "Admin Chat Monitor Edition"
 LoginSubtitle.TextColor3 = Color3.fromRGB(220, 220, 230)
 LoginSubtitle.TextSize = 13
 LoginSubtitle.ZIndex = 103
@@ -886,7 +1077,7 @@ PasswordInput.ClearTextOnFocus = false
 PasswordInput.ZIndex = 104
 PasswordInput.Parent = PasswordContainer
 
--- Login Button with Gradient
+-- Login Button
 local LoginButton = Instance.new("TextButton")
 LoginButton.Size = UDim2.new(1, 0, 0, 55)
 LoginButton.Position = UDim2.new(0, 0, 0, 145)
@@ -904,13 +1095,6 @@ CreateCorner(LoginButton, 12)
 CreateGradient(LoginButton, Theme.Gradient1, Theme.Gradient2, 45)
 CreateRippleEffect(LoginButton)
 
-LoginButton.MouseEnter:Connect(function()
-    Animate(LoginButton, {Size = UDim2.new(1, 4, 0, 57)}, 0.2)
-end)
-LoginButton.MouseLeave:Connect(function()
-    Animate(LoginButton, {Size = UDim2.new(1, 0, 0, 55)}, 0.2)
-end)
-
 -- Login Message
 local LoginMessage = Instance.new("TextLabel")
 LoginMessage.Size = UDim2.new(1, 0, 0, 30)
@@ -923,13 +1107,12 @@ LoginMessage.TextSize = 13
 LoginMessage.ZIndex = 103
 LoginMessage.Parent = LoginContent
 
--- Credits with Animation
 local LoginCredits = Instance.new("TextLabel")
 LoginCredits.Size = UDim2.new(1, 0, 0, 25)
 LoginCredits.Position = UDim2.new(0, 0, 1, -35)
 LoginCredits.BackgroundTransparency = 1
 LoginCredits.Font = Enum.Font.Gotham
-LoginCredits.Text = "Qwen Aimviewer v5.2 • F4 - открыть"
+LoginCredits.Text = "Qwen Aimviewer v5.4 • F4 - открыть"
 LoginCredits.TextColor3 = Theme.TextMuted
 LoginCredits.TextSize = 11
 LoginCredits.ZIndex = 102
@@ -950,7 +1133,7 @@ table.insert(UIElements.AllGuis, MainGui)
 local MainContainer = Instance.new("Frame")
 MainContainer.Name = "Container"
 MainContainer.AnchorPoint = Vector2.new(0.5, 0.5)
-MainContainer.Size = UDim2.new(0, 440, 0, 600)
+MainContainer.Size = UDim2.new(0, 450, 0, 620)
 MainContainer.Position = UDim2.new(0.5, 0, 0.5, 0)
 MainContainer.BackgroundColor3 = Theme.Background
 MainContainer.BorderSizePixel = 0
@@ -964,7 +1147,7 @@ CreateCorner(MainContainer, 18)
 CreateStroke(MainContainer, Theme.Border, 1, 0.4)
 CreateShadow(MainContainer, 70, 0.4)
 
--- Main Header with Gradient
+-- Main Header
 local MainHeader = Instance.new("Frame")
 MainHeader.Size = UDim2.new(1, 0, 0, 90)
 MainHeader.BackgroundColor3 = Theme.Primary
@@ -986,9 +1169,8 @@ MainHeaderCover.Parent = MainHeader
 table.insert(UIElements.PrimaryElements, MainHeaderCover)
 CreateGradient(MainHeaderCover, Theme.Gradient1, Theme.Gradient2, 45)
 
--- Logo Section
 local LogoSection = Instance.new("Frame")
-LogoSection.Size = UDim2.new(1, -120, 1, 0)
+LogoSection.Size = UDim2.new(1, -150, 1, 0)
 LogoSection.Position = UDim2.new(0, 18, 0, 0)
 LogoSection.BackgroundTransparency = 1
 LogoSection.ZIndex = 12
@@ -999,7 +1181,7 @@ MainLogoIcon.Size = UDim2.new(0, 45, 0, 45)
 MainLogoIcon.Position = UDim2.new(0, 0, 0, 18)
 MainLogoIcon.BackgroundTransparency = 1
 MainLogoIcon.Font = Enum.Font.GothamBlack
-MainLogoIcon.Text = "👁‍🗨"
+MainLogoIcon.Text = "💬"
 MainLogoIcon.TextColor3 = Theme.Text
 MainLogoIcon.TextSize = 30
 MainLogoIcon.ZIndex = 13
@@ -1022,31 +1204,29 @@ MainVersion.Size = UDim2.new(1, -50, 0, 20)
 MainVersion.Position = UDim2.new(0, 50, 0, 45)
 MainVersion.BackgroundTransparency = 1
 MainVersion.Font = Enum.Font.Gotham
-MainVersion.Text = "v5.2 Enhanced • Admin Checker"
+MainVersion.Text = "v5.4 Admin Chat Monitor"
 MainVersion.TextColor3 = Color3.fromRGB(210, 210, 225)
 MainVersion.TextSize = 11
 MainVersion.TextXAlignment = Enum.TextXAlignment.Left
 MainVersion.ZIndex = 13
 MainVersion.Parent = LogoSection
 
--- Online Counter
 local OnlineCounter = Instance.new("TextLabel")
 OnlineCounter.Size = UDim2.new(1, -50, 0, 15)
 OnlineCounter.Position = UDim2.new(0, 50, 0, 62)
 OnlineCounter.BackgroundTransparency = 1
 OnlineCounter.Font = Enum.Font.GothamMedium
-OnlineCounter.Text = "🟢 Игроков онлайн: " .. #Players:GetPlayers()
+OnlineCounter.Text = "🟢 Игроков: " .. #Players:GetPlayers()
 OnlineCounter.TextColor3 = Theme.Success
 OnlineCounter.TextSize = 10
 OnlineCounter.TextXAlignment = Enum.TextXAlignment.Left
 OnlineCounter.ZIndex = 13
 OnlineCounter.Parent = LogoSection
 
--- Update online counter
 spawn(function()
     while ScriptRunning do
         if OnlineCounter and OnlineCounter.Parent then
-            OnlineCounter.Text = "🟢 Игроков онлайн: " .. #Players:GetPlayers()
+            OnlineCounter.Text = "🟢 Игроков: " .. #Players:GetPlayers()
         end
         task.wait(2)
     end
@@ -1054,21 +1234,31 @@ end)
 
 -- Header Buttons
 local HeaderButtonsFrame = Instance.new("Frame")
-HeaderButtonsFrame.Size = UDim2.new(0, 95, 0, 38)
-HeaderButtonsFrame.Position = UDim2.new(1, -110, 0, 26)
+HeaderButtonsFrame.Size = UDim2.new(0, 135, 0, 38)
+HeaderButtonsFrame.Position = UDim2.new(1, -150, 0, 26)
 HeaderButtonsFrame.BackgroundTransparency = 1
 HeaderButtonsFrame.ZIndex = 12
 HeaderButtonsFrame.Parent = MainHeader
 
 local HeaderButtonsLayout = CreateListLayout(HeaderButtonsFrame, 8, Enum.FillDirection.Horizontal, Enum.HorizontalAlignment.Right)
 
-local function CreateHeaderButton(icon, color)
-    local button = Instance.new("ImageButton")
+local function CreateHeaderButton(icon, color, isImage)
+    local button
+    if isImage then
+        button = Instance.new("ImageButton")
+        button.Image = icon
+        button.ImageColor3 = Theme.Text
+    else
+        button = Instance.new("TextButton")
+        button.Font = Enum.Font.GothamBold
+        button.Text = icon
+        button.TextColor3 = Theme.Text
+        button.TextSize = 18
+    end
+    
     button.Size = UDim2.new(0, 38, 0, 38)
     button.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     button.BackgroundTransparency = 0.88
-    button.Image = icon
-    button.ImageColor3 = Theme.Text
     button.AutoButtonColor = false
     button.ZIndex = 13
     button.Parent = HeaderButtonsFrame
@@ -1086,8 +1276,20 @@ local function CreateHeaderButton(icon, color)
     return button
 end
 
-local SettingsButton = CreateHeaderButton("rbxassetid://10734950309")
-local CloseButton = CreateHeaderButton("rbxassetid://10747384394", Theme.Error)
+-- Chat Button (NEW!)
+local ChatButton = CreateHeaderButton("💬", Theme.Warning, false)
+local SettingsButton = CreateHeaderButton("rbxassetid://10734950309", nil, true)
+local CloseButton = CreateHeaderButton("rbxassetid://10747384394", Theme.Error, true)
+
+-- Chat Button Click
+ChatButton.MouseButton1Click:Connect(function()
+    if not ScriptRunning then return end
+    Sounds.Click:Play()
+    
+    if AdminChatGui then
+        AdminChatGui.Enabled = not AdminChatGui.Enabled
+    end
+end)
 
 -- Tab Bar
 local TabBar = Instance.new("Frame")
@@ -1133,7 +1335,7 @@ local AdminsTab = CreateTab("Admins", "Админы", "⚠", false)
 
 -- Content Area
 local ContentArea = Instance.new("Frame")
-ContentArea.Size = UDim2.new(1, -36, 0, 400)
+ContentArea.Size = UDim2.new(1, -36, 0, 410)
 ContentArea.Position = UDim2.new(0, 18, 0, 158)
 ContentArea.BackgroundTransparency = 1
 ContentArea.ZIndex = 11
@@ -1217,7 +1419,6 @@ AdminsContent.Visible = false
 AdminsContent.ZIndex = 11
 AdminsContent.Parent = ContentArea
 
--- Admin Info Bar
 local AdminInfoBar = Instance.new("Frame")
 AdminInfoBar.Size = UDim2.new(1, 0, 0, 48)
 AdminInfoBar.BackgroundColor3 = Color3.fromRGB(50, 40, 25)
@@ -1240,7 +1441,6 @@ AdminInfoText.TextXAlignment = Enum.TextXAlignment.Left
 AdminInfoText.ZIndex = 13
 AdminInfoText.Parent = AdminInfoBar
 
--- Admin List
 local AdminListFrame = Instance.new("Frame")
 AdminListFrame.Size = UDim2.new(1, 0, 1, -60)
 AdminListFrame.Position = UDim2.new(0, 0, 0, 58)
@@ -1267,11 +1467,10 @@ AdminScroll.Parent = AdminListFrame
 local AdminListLayout = CreateListLayout(AdminScroll, 8)
 CreatePadding(AdminScroll, 6, 6, 6, 6)
 
--- Tab Switching with Animation
+-- Tab Switching
 local function SwitchTab(tabName)
     CurrentTab = tabName
     
-    -- Remove old gradients
     for _, child in pairs(PlayersTab:GetChildren()) do
         if child:IsA("UIGradient") then child:Destroy() end
     end
@@ -1331,7 +1530,6 @@ local watchingStroke = CreateStroke(WatchingBar, Theme.Primary, 2, 0.25)
 table.insert(UIElements.Strokes, watchingStroke)
 CreateShadow(WatchingBar, 50, 0.4)
 
--- Status Indicator with Pulse
 local WatchingIndicator = Instance.new("Frame")
 WatchingIndicator.AnchorPoint = Vector2.new(0.5, 0.5)
 WatchingIndicator.Size = UDim2.new(0, 14, 0, 14)
@@ -1342,9 +1540,7 @@ WatchingIndicator.ZIndex = 51
 WatchingIndicator.Parent = WatchingBar
 
 CreateCorner(WatchingIndicator, 100)
-CreatePulseEffect(WatchingIndicator)
 
--- Watching Info
 local WatchingInfo = Instance.new("Frame")
 WatchingInfo.Size = UDim2.new(1, -70, 1, -20)
 WatchingInfo.Position = UDim2.new(0, 55, 0, 10)
@@ -1455,7 +1651,8 @@ AlertInfo.Parent = AlertContent
 
 local function ShowAdminAlert(playerName, rank, roleName)
     if not Config.AdminAlertEnabled or not ScriptRunning then return end
-    
+
+
     AlertInfo.Text = "👤 " .. playerName .. " | 📊 Ранг: " .. rank .. " (" .. roleName .. ")"
     AlertGui.Enabled = true
     Sounds.Alert:Play()
@@ -1506,7 +1703,7 @@ CreateStroke(SettingsFrame, Theme.Border, 1, 0.4)
 CreateShadow(SettingsFrame, 70, 0.4)
 CreateGlow(SettingsFrame, Theme.Primary, 0.92)
 
--- Settings Header with Gradient
+-- Settings Header
 local SettingsHeader = Instance.new("Frame")
 SettingsHeader.Size = UDim2.new(1, 0, 0, 75)
 SettingsHeader.BackgroundColor3 = Theme.Primary
@@ -1538,25 +1735,24 @@ SettingsTitle.TextSize = 19
 SettingsTitle.ZIndex = 63
 SettingsTitle.Parent = SettingsHeader
 
--- Settings Content - ИСПРАВЛЕНО: увеличен CanvasSize и добавлен отступ
+-- Settings Content
 local SettingsContent = Instance.new("ScrollingFrame")
-SettingsContent.Size = UDim2.new(1, -40, 0, 440)
+SettingsContent.Size = UDim2.new(1, -40, 0, 480)
 SettingsContent.Position = UDim2.new(0, 20, 0, 90)
 SettingsContent.BackgroundTransparency = 1
 SettingsContent.ScrollBarThickness = 4
 SettingsContent.ScrollBarImageColor3 = Theme.Primary
-SettingsContent.CanvasSize = UDim2.new(0, 0, 0, 950) -- УВЕЛИЧЕНО для видимости всех элементов
+SettingsContent.CanvasSize = UDim2.new(0, 0, 0, 900)
 SettingsContent.BorderSizePixel = 0
 SettingsContent.ZIndex = 62
 SettingsContent.Parent = SettingsFrame
 
-local SettingsLayout = CreateListLayout(SettingsContent, 12)
-CreatePadding(SettingsContent, 0, 80, 0, 0) -- Добавлен отступ снизу
+local SettingsLayout = CreateListLayout(SettingsContent, 10)
 
--- Section Label Creator
+-- Settings Helper Functions
 local function CreateSectionLabel(parent, text, icon)
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 0, 30)
+    label.Size = UDim2.new(1, 0, 0, 28)
     label.BackgroundTransparency = 1
     label.Font = Enum.Font.GothamBold
     label.Text = (icon or "") .. " " .. text
@@ -1568,10 +1764,9 @@ local function CreateSectionLabel(parent, text, icon)
     return label
 end
 
--- Toggle Creator
 local function CreateToggle(parent, text, icon, defaultValue, callback)
     local container = Instance.new("Frame")
-    container.Size = UDim2.new(1, 0, 0, 52)
+    container.Size = UDim2.new(1, 0, 0, 50)
     container.BackgroundColor3 = Theme.Surface
     container.BorderSizePixel = 0
     container.ZIndex = 63
@@ -1587,30 +1782,30 @@ local function CreateToggle(parent, text, icon, defaultValue, callback)
     label.Font = Enum.Font.GothamMedium
     label.Text = (icon or "") .. " " .. text
     label.TextColor3 = Theme.Text
-    label.TextSize = 14
+    label.TextSize = 13
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.ZIndex = 64
     label.Parent = container
     
     local toggleBg = Instance.new("Frame")
-    toggleBg.Size = UDim2.new(0, 55, 0, 28)
-    toggleBg.Position = UDim2.new(1, -70, 0.5, -14)
+    toggleBg.Size = UDim2.new(0, 50, 0, 26)
+    toggleBg.Position = UDim2.new(1, -65, 0.5, -13)
     toggleBg.BackgroundColor3 = defaultValue and Theme.Success or Theme.BackgroundTertiary
     toggleBg.BorderSizePixel = 0
     toggleBg.ZIndex = 64
     toggleBg.Parent = container
     
-    CreateCorner(toggleBg, 14)
+    CreateCorner(toggleBg, 13)
     
     local toggleCircle = Instance.new("Frame")
-    toggleCircle.Size = UDim2.new(0, 22, 0, 22)
-    toggleCircle.Position = defaultValue and UDim2.new(1, -25, 0.5, -11) or UDim2.new(0, 3, 0.5, -11)
+    toggleCircle.Size = UDim2.new(0, 20, 0, 20)
+    toggleCircle.Position = defaultValue and UDim2.new(1, -23, 0.5, -10) or UDim2.new(0, 3, 0.5, -10)
     toggleCircle.BackgroundColor3 = Theme.Text
     toggleCircle.BorderSizePixel = 0
     toggleCircle.ZIndex = 65
     toggleCircle.Parent = toggleBg
     
-    CreateCorner(toggleCircle, 11)
+    CreateCorner(toggleCircle, 10)
     
     local enabled = defaultValue
     
@@ -1620,14 +1815,14 @@ local function CreateToggle(parent, text, icon, defaultValue, callback)
     button.Text = ""
     button.ZIndex = 66
     button.Parent = container
-
-	    button.MouseButton1Click:Connect(function()
+    
+    button.MouseButton1Click:Connect(function()
         if not ScriptRunning then return end
         Sounds.Click:Play()
         enabled = not enabled
         
         Animate(toggleBg, {BackgroundColor3 = enabled and Theme.Success or Theme.BackgroundTertiary}, 0.3)
-        Animate(toggleCircle, {Position = enabled and UDim2.new(1, -25, 0.5, -11) or UDim2.new(0, 3, 0.5, -11)}, 0.3, Enum.EasingStyle.Back)
+        Animate(toggleCircle, {Position = enabled and UDim2.new(1, -23, 0.5, -10) or UDim2.new(0, 3, 0.5, -10)}, 0.3, Enum.EasingStyle.Back)
         
         if callback then callback(enabled) end
     end)
@@ -1635,10 +1830,9 @@ local function CreateToggle(parent, text, icon, defaultValue, callback)
     return container
 end
 
--- Slider Creator
 local function CreateSlider(parent, text, icon, minVal, maxVal, defaultValue, callback)
     local container = Instance.new("Frame")
-    container.Size = UDim2.new(1, 0, 0, 68)
+    container.Size = UDim2.new(1, 0, 0, 62)
     container.BackgroundColor3 = Theme.Surface
     container.BorderSizePixel = 0
     container.ZIndex = 63
@@ -1648,38 +1842,38 @@ local function CreateSlider(parent, text, icon, minVal, maxVal, defaultValue, ca
     CreateStroke(container, Theme.Border, 1, 0.6)
     
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(0.6, 0, 0, 30)
+    label.Size = UDim2.new(0.6, 0, 0, 28)
     label.Position = UDim2.new(0, 15, 0, 5)
     label.BackgroundTransparency = 1
     label.Font = Enum.Font.GothamMedium
     label.Text = (icon or "") .. " " .. text
     label.TextColor3 = Theme.Text
-    label.TextSize = 14
+    label.TextSize = 13
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.ZIndex = 64
     label.Parent = container
     
     local valueLabel = Instance.new("TextLabel")
-    valueLabel.Size = UDim2.new(0.3, 0, 0, 30)
+    valueLabel.Size = UDim2.new(0.3, 0, 0, 28)
     valueLabel.Position = UDim2.new(0.7, 0, 0, 5)
     valueLabel.BackgroundTransparency = 1
     valueLabel.Font = Enum.Font.GothamBold
     valueLabel.Text = tostring(defaultValue)
     valueLabel.TextColor3 = Theme.Primary
-    valueLabel.TextSize = 14
+    valueLabel.TextSize = 13
     valueLabel.TextXAlignment = Enum.TextXAlignment.Right
     valueLabel.ZIndex = 64
     valueLabel.Parent = container
     
     local sliderBg = Instance.new("Frame")
-    sliderBg.Size = UDim2.new(1, -30, 0, 12)
-    sliderBg.Position = UDim2.new(0, 15, 0, 45)
+    sliderBg.Size = UDim2.new(1, -30, 0, 10)
+    sliderBg.Position = UDim2.new(0, 15, 0, 42)
     sliderBg.BackgroundColor3 = Theme.BackgroundTertiary
     sliderBg.BorderSizePixel = 0
     sliderBg.ZIndex = 64
     sliderBg.Parent = container
     
-    CreateCorner(sliderBg, 6)
+    CreateCorner(sliderBg, 5)
     
     local fillPercent = (defaultValue - minVal) / (maxVal - minVal)
     
@@ -1690,7 +1884,7 @@ local function CreateSlider(parent, text, icon, minVal, maxVal, defaultValue, ca
     sliderFill.ZIndex = 65
     sliderFill.Parent = sliderBg
     
-    CreateCorner(sliderFill, 6)
+    CreateCorner(sliderFill, 5)
     CreateGradient(sliderFill, Theme.Gradient1, Theme.Gradient2, 0)
     
     local sliderButton = Instance.new("TextButton")
@@ -1700,7 +1894,7 @@ local function CreateSlider(parent, text, icon, minVal, maxVal, defaultValue, ca
     sliderButton.Text = ""
     sliderButton.ZIndex = 66
     sliderButton.Parent = sliderBg
-
+    
     local isDragging = false
     
     sliderButton.MouseButton1Down:Connect(function()
@@ -1730,146 +1924,6 @@ local function CreateSlider(parent, text, icon, minVal, maxVal, defaultValue, ca
     return container
 end
 
--- RGB Slider Creator
-local function CreateRGBSlider(parent, text, icon, defaultColor, callback)
-    local container = Instance.new("Frame")
-    container.Size = UDim2.new(1, 0, 0, 98)
-    container.BackgroundColor3 = Theme.Surface
-    container.BorderSizePixel = 0
-    container.ZIndex = 63
-    container.Parent = parent
-    
-    CreateCorner(container, 12)
-    CreateStroke(container, Theme.Border, 1, 0.6)
-    
-    local topRow = Instance.new("Frame")
-    topRow.Size = UDim2.new(1, 0, 0, 35)
-    topRow.BackgroundTransparency = 1
-    topRow.ZIndex = 64
-    topRow.Parent = container
-    
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(0.6, 0, 1, 0)
-    label.Position = UDim2.new(0, 15, 0, 0)
-    label.BackgroundTransparency = 1
-    label.Font = Enum.Font.GothamMedium
-    label.Text = (icon or "") .. " " .. text
-    label.TextColor3 = Theme.Text
-    label.TextSize = 14
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.ZIndex = 65
-    label.Parent = topRow
-    
-    local colorPreview = Instance.new("Frame")
-    colorPreview.Size = UDim2.new(0, 50, 0, 25)
-    colorPreview.Position = UDim2.new(1, -65, 0.5, -12)
-    colorPreview.BackgroundColor3 = defaultColor
-    colorPreview.BorderSizePixel = 0
-    colorPreview.ZIndex = 65
-    colorPreview.Parent = topRow
-    
-    CreateCorner(colorPreview, 8)
-    CreateStroke(colorPreview, Theme.Border, 1, 0.4)
-    
-    local currentColor = defaultColor
-    
-    local slidersFrame = Instance.new("Frame")
-    slidersFrame.Size = UDim2.new(1, -30, 0, 48)
-    slidersFrame.Position = UDim2.new(0, 15, 0, 42)
-    slidersFrame.BackgroundTransparency = 1
-    slidersFrame.ZIndex = 64
-    slidersFrame.Parent = container
-    
-    local sliderFills = {}
-    
-    local function CreateSingleSlider(name, sliderColor, xPos, initialValue)
-        local sliderContainer = Instance.new("Frame")
-        sliderContainer.Size = UDim2.new(0.31, 0, 0, 38)
-        sliderContainer.Position = UDim2.new(xPos, 0, 0, 0)
-        sliderContainer.BackgroundTransparency = 1
-        sliderContainer.ZIndex = 65
-        sliderContainer.Parent = slidersFrame
-        
-        local sliderLabel = Instance.new("TextLabel")
-        sliderLabel.Size = UDim2.new(1, 0, 0, 14)
-        sliderLabel.BackgroundTransparency = 1
-        sliderLabel.Font = Enum.Font.GothamBold
-        sliderLabel.Text = name
-        sliderLabel.TextColor3 = sliderColor
-        sliderLabel.TextSize = 11
-        sliderLabel.ZIndex = 66
-        sliderLabel.Parent = sliderContainer
-        
-        local sliderBg = Instance.new("Frame")
-        sliderBg.Size = UDim2.new(1, 0, 0, 14)
-        sliderBg.Position = UDim2.new(0, 0, 0, 20)
-        sliderBg.BackgroundColor3 = Theme.BackgroundTertiary
-        sliderBg.BorderSizePixel = 0
-        sliderBg.ZIndex = 66
-        sliderBg.Parent = sliderContainer
-        
-        CreateCorner(sliderBg, 7)
-        
-        local sliderFill = Instance.new("Frame")
-        sliderFill.Size = UDim2.new(initialValue / 255, 0, 1, 0)
-        sliderFill.BackgroundColor3 = sliderColor
-        sliderFill.BackgroundTransparency = 0.3
-        sliderFill.BorderSizePixel = 0
-        sliderFill.ZIndex = 67
-        sliderFill.Parent = sliderBg
-        
-        CreateCorner(sliderFill, 7)
-        
-        sliderFills[name] = sliderFill
-        
-        local sliderButton = Instance.new("TextButton")
-        sliderButton.Size = UDim2.new(1, 0, 1, 0)
-        sliderButton.BackgroundTransparency = 1
-        sliderButton.Text = ""
-        sliderButton.ZIndex = 68
-        sliderButton.Parent = sliderBg
-        
-        local isDragging = false
-        
-        sliderButton.MouseButton1Down:Connect(function()
-            isDragging = true
-        end)
-        
-        UserInputService.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                isDragging = false
-            end
-        end)
-        
-        RunService.RenderStepped:Connect(function()
-            if isDragging and ScriptRunning then
-                local mousePos = UserInputService:GetMouseLocation()
-                local relX = math.clamp((mousePos.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X, 0, 1)
-                sliderFill.Size = UDim2.new(relX, 0, 1, 0)
-                
-                local r, g, b = currentColor.R * 255, currentColor.G * 255, currentColor.B * 255
-                if name == "R" then r = relX * 255
-                elseif name == "G" then g = relX * 255
-                else b = relX * 255 end
-                
-                currentColor = Color3.fromRGB(r, g, b)
-                colorPreview.BackgroundColor3 = currentColor
-                
-                if callback then callback(currentColor) end
-            end
-        end)
-        
-        return sliderFill
-    end
-    
-    CreateSingleSlider("R", Color3.fromRGB(255, 100, 100), 0, defaultColor.R * 255)
-    CreateSingleSlider("G", Color3.fromRGB(100, 255, 100), 0.345, defaultColor.G * 255)
-    CreateSingleSlider("B", Color3.fromRGB(100, 100, 255), 0.69, defaultColor.B * 255)
-    
-    return container, colorPreview
-end
-
--- Danger Button Creator (for Unload)
 local function CreateDangerButton(parent, text, icon, callback)
     local button = Instance.new("TextButton")
     button.Size = UDim2.new(1, 0, 0, 55)
@@ -1889,12 +1943,12 @@ local function CreateDangerButton(parent, text, icon, callback)
     button.MouseEnter:Connect(function()
         if not ScriptRunning then return end
         Sounds.Hover:Play()
-        Animate(button, {BackgroundColor3 = Color3.fromRGB(230, 60, 70), Size = UDim2.new(1, 4, 0, 57)}, 0.25)
+        Animate(button, {BackgroundColor3 = Color3.fromRGB(230, 60, 70)}, 0.25)
     end)
     
     button.MouseLeave:Connect(function()
         if not ScriptRunning then return end
-        Animate(button, {BackgroundColor3 = Theme.Danger, Size = UDim2.new(1, 0, 0, 55)}, 0.25)
+        Animate(button, {BackgroundColor3 = Theme.Danger}, 0.25)
     end)
     
     button.MouseButton1Click:Connect(function()
@@ -1906,7 +1960,7 @@ local function CreateDangerButton(parent, text, icon, callback)
     return button
 end
 
--- Create Settings
+-- Create Settings Content
 CreateSectionLabel(SettingsContent, "ESP НАСТРОЙКИ", "👁")
 
 CreateToggle(SettingsContent, "Включить ESP", "📦", Config.EspEnabled, function(value)
@@ -1927,18 +1981,6 @@ CreateSlider(SettingsContent, "Прозрачность ESP", "🔍", 0, 1, Conf
     SaveCurrentConfig()
 end)
 
-CreateRGBSlider(SettingsContent, "Цвет ESP", "🎨", Config.EspColor, function(color)
-    Config.EspColor = color
-    UpdateESPColors()
-    SaveCurrentConfig()
-end)
-
-CreateRGBSlider(SettingsContent, "Цвет ESP админов", "⚠", Config.AdminEspColor, function(color)
-    Config.AdminEspColor = color
-    UpdateESPColors()
-    SaveCurrentConfig()
-end)
-
 CreateSectionLabel(SettingsContent, "ЛУЧ НАСТРОЙКИ", "✨")
 
 CreateToggle(SettingsContent, "Включить луч", "💫", Config.BeamEnabled, function(value)
@@ -1954,44 +1996,10 @@ CreateSlider(SettingsContent, "Ширина луча", "📏", 0.05, 0.5, Config
     SaveCurrentConfig()
 end)
 
-CreateRGBSlider(SettingsContent, "Цвет луча", "🌈", Config.BeamColor, function(color)
-    Config.BeamColor = color
-    AimBeam.Color = ColorSequence.new(color)
-    SaveCurrentConfig()
-end)
+CreateSectionLabel(SettingsContent, "ЧАТ АДМИНОВ", "💬")
 
-CreateSectionLabel(SettingsContent, "НОЖ ХИТБОКС", "🔪")
-
-CreateToggle(SettingsContent, "Расширить хитбокс ножа", "🗡", Config.KnifeHitboxEnabled, function(value)
-    Config.KnifeHitboxEnabled = value
-    UpdateAllKnifeHitboxes()
-    SaveCurrentConfig()
-end)
-
-CreateSlider(SettingsContent, "Размер хитбокса", "📐", 5, 50, Config.KnifeHitboxSize, function(value)
-    Config.KnifeHitboxSize = value
-    UpdateAllKnifeHitboxes()
-    SaveCurrentConfig()
-end)
-
-CreateSectionLabel(SettingsContent, "ИНТЕРФЕЙС", "🎭")
-
-CreateRGBSlider(SettingsContent, "Цвет темы", "🖌", Config.HudColor, function(color)
-    Config.HudColor = color
-    UpdateTheme()
-    
-    for _, element in pairs(UIElements.PrimaryElements) do
-        if element and element.Parent then
-            Animate(element, {BackgroundColor3 = color}, 0.4)
-        end
-    end
-    
-    for _, stroke in pairs(UIElements.Strokes) do
-        if stroke and stroke.Parent then
-            stroke.Color = color
-        end
-    end
-    
+CreateToggle(SettingsContent, "Мониторинг чата", "📡", Config.AdminChatEnabled, function(value)
+    Config.AdminChatEnabled = value
     SaveCurrentConfig()
 end)
 
@@ -2002,24 +2010,15 @@ CreateToggle(SettingsContent, "Алерт об админах", "🚨", Config.A
     SaveCurrentConfig()
 end)
 
-CreateSectionLabel(SettingsContent, "УПРАВЛЕНИЕ СКРИПТОМ", "⚙")
+CreateSectionLabel(SettingsContent, "УПРАВЛЕНИЕ", "⚙")
 
--- UNLOAD BUTTON IN SETTINGS
 CreateDangerButton(SettingsContent, "ВЫГРУЗИТЬ СКРИПТ", "🗑", function()
-    -- Close settings first
     Animate(SettingsFrame, {Position = UDim2.new(0.5, 0, 1.5, 0)}, 0.4, Enum.EasingStyle.Back, Enum.EasingDirection.In)
     Animate(SettingsOverlay, {BackgroundTransparency = 1}, 0.3)
     
     task.wait(0.5)
     UnloadScript()
 end)
-
--- Spacer для дополнительного пространства внизу
-local BottomSpacer = Instance.new("Frame")
-BottomSpacer.Size = UDim2.new(1, 0, 0, 30)
-BottomSpacer.BackgroundTransparency = 1
-BottomSpacer.ZIndex = 63
-BottomSpacer.Parent = SettingsContent
 
 -- Save Button
 local SaveSettingsBtn = Instance.new("TextButton")
@@ -2031,20 +2030,13 @@ SaveSettingsBtn.Text = "💾 СОХРАНИТЬ И ЗАКРЫТЬ"
 SaveSettingsBtn.TextColor3 = Theme.Text
 SaveSettingsBtn.TextSize = 15
 SaveSettingsBtn.AutoButtonColor = false
-SaveSettingsBtn.ZIndex = 70
+SaveSettingsBtn.ZIndex = 63
 SaveSettingsBtn.Parent = SettingsFrame
 table.insert(UIElements.PrimaryElements, SaveSettingsBtn)
 
 CreateCorner(SaveSettingsBtn, 12)
 CreateGradient(SaveSettingsBtn, Theme.Gradient1, Theme.Gradient2, 45)
 CreateRippleEffect(SaveSettingsBtn)
-
-SaveSettingsBtn.MouseEnter:Connect(function()
-    Animate(SaveSettingsBtn, {Size = UDim2.new(1, -36, 0, 54)}, 0.2)
-end)
-SaveSettingsBtn.MouseLeave:Connect(function()
-    Animate(SaveSettingsBtn, {Size = UDim2.new(1, -40, 0, 52)}, 0.2)
-end)
 
 SaveSettingsBtn.MouseButton1Click:Connect(function()
     if not ScriptRunning then return end
@@ -2059,11 +2051,24 @@ SaveSettingsBtn.MouseButton1Click:Connect(function()
     SettingsFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 end)
 
--- Обновление CanvasSize после добавления всех элементов
-task.delay(0.5, function()
-    if SettingsContent and SettingsLayout then
-        SettingsContent.CanvasSize = UDim2.new(0, 0, 0, SettingsLayout.AbsoluteContentSize.Y + 100)
-    end
+-- Settings Button Click
+SettingsButton.MouseButton1Click:Connect(function()
+    if not ScriptRunning then return end
+    Sounds.Click:Play()
+    
+    SettingsGui.Enabled = true
+    SettingsOverlay.BackgroundTransparency = 1
+    SettingsFrame.Position = UDim2.new(0.5, 0, -0.6, 0)
+    
+    Animate(SettingsOverlay, {BackgroundTransparency = 0.5}, 0.4)
+    Animate(SettingsFrame, {Position = UDim2.new(0.5, 0, 0.5, 0)}, 0.5, Enum.EasingStyle.Back)
+end)
+
+-- Close Button Click
+CloseButton.MouseButton1Click:Connect(function()
+    if not ScriptRunning then return end
+    Sounds.Click:Play()
+    HideMainMenu()
 end)
 
 -- ═══════════════════════════════════════════════════════════
@@ -2191,8 +2196,6 @@ local function CreatePlayerCard(player, isAdmin, rank, roleName)
         CreateGradient(watchButton, Theme.Gradient1, Theme.Gradient2, 45)
     end
     
-    local normalBtnColor = isAdmin and Theme.Warning or Theme.Primary
-    local hoverBtnColor = isAdmin and Color3.fromRGB(255, 205, 70) or Theme.PrimaryHover
     local normalCardColor = isAdmin and Color3.fromRGB(55, 42, 25) or Theme.BackgroundSecondary
     local hoverCardColor = isAdmin and Color3.fromRGB(65, 50, 30) or Theme.BackgroundTertiary
     
@@ -2234,12 +2237,6 @@ local function CreatePlayerCard(player, isAdmin, rank, roleName)
             WatchingGui.Enabled = true
             WatchingBar.Position = UDim2.new(0.5, 0, 1, 50)
             Animate(WatchingBar, {Position = UDim2.new(0.5, 0, 1, -25)}, 0.5, Enum.EasingStyle.Back)
-            
-            table.insert(ViewLogs, 1, {
-                Name = (isAdmin and "[ADMIN] " or "") .. (player.DisplayName or player.Name),
-                UserId = player.UserId,
-                Time = os.date("%H:%M:%S")
-            })
             
             CreateESP(player, CurrentTarget)
             
@@ -2476,9 +2473,8 @@ function UnloadScript()
     if not ScriptRunning then return end
     ScriptRunning = false
     
-    Sounds.Unload:Play()
+    Sounds.Success:Play()
     
-    -- Stop watching
     if IsWatching then
         IsWatching = false
         CurrentTarget = nil
@@ -2487,12 +2483,6 @@ function UnloadScript()
         end
     end
     
-    -- Restore knife hitboxes
-    for tool, _ in pairs(KnifeHitboxConnections) do
-        RestoreKnifeHitbox(tool)
-    end
-    
-    -- Remove all ESP
     for userId, objects in pairs(ESPObjects) do
         for _, obj in pairs(objects) do
             if obj then
@@ -2502,26 +2492,22 @@ function UnloadScript()
     end
     ESPObjects = {}
     
-    -- Destroy ESP Folder
     pcall(function()
         if ESPFolder then ESPFolder:Destroy() end
     end)
     
-    -- Destroy Beam
     pcall(function()
         if AimBeam then AimBeam:Destroy() end
         if BeamAttachment0 then BeamAttachment0:Destroy() end
         if BeamAttachment1 then BeamAttachment1:Destroy() end
     end)
     
-    -- Destroy all GUIs with animation
     for _, gui in pairs(UIElements.AllGuis) do
         pcall(function()
             if gui then gui:Destroy() end
         end)
     end
     
-    -- Destroy sounds
     for _, sound in pairs(Sounds) do
         pcall(function()
             if sound then sound:Destroy() end
@@ -2538,7 +2524,7 @@ function UnloadScript()
     
     print("")
     print("═══════════════════════════════════════")
-    print("   👋 Qwen Aimviewer v5.2 выгружен!")
+    print("   👋 Qwen Aimviewer v5.4 выгружен!")
     print("═══════════════════════════════════════")
     print("")
 end
@@ -2555,7 +2541,6 @@ LoginButton.MouseButton1Click:Connect(function()
     local enteredUsername = UsernameInput.Text
     local enteredPassword = PasswordInput.Text
     
-    -- Check credentials using obfuscated functions
     if enteredUsername == _AUTH_KEY_1() and enteredPassword == _AUTH_KEY_2() then
         Sounds.Success:Play()
         IsAuthenticated = true
@@ -2567,16 +2552,19 @@ LoginButton.MouseButton1Click:Connect(function()
         HideLoginScreen()
         
         task.wait(0.3)
+        
+        -- Create Admin Chat GUI
+        CreateAdminChatGui()
+        SetupChatMonitoring()
+        
         ShowMainMenu()
         RefreshAllESP()
         CheckAllAdmins()
-        StartESPUpdateLoop()
-        SetupKnifeHitbox()
         
         pcall(function()
             StarterGui:SetCore("SendNotification", {
-                Title = "👁 Qwen Aimviewer v5.2",
-                Text = "Добро пожаловать! Хитбокс ножа активен!",
+                Title = "👁 Qwen Aimviewer v5.4",
+                Text = "Добро пожаловать! Чат админов активен",
                 Duration = 3
             })
         end)
@@ -2584,7 +2572,6 @@ LoginButton.MouseButton1Click:Connect(function()
         LoginMessage.Text = "❌ Неверный логин или пароль!"
         LoginMessage.TextColor3 = Theme.Error
         
-        -- Shake animation
         local originalPos = LoginContainer.Position
         for i = 1, 4 do
             Animate(LoginContainer, {Position = UDim2.new(0.5, (i % 2 == 0 and 12 or -12), 0.5, 0)}, 0.05)
@@ -2594,26 +2581,6 @@ LoginButton.MouseButton1Click:Connect(function()
     end
 end)
 
--- Settings Button
-SettingsButton.MouseButton1Click:Connect(function()
-    if not ScriptRunning then return end
-    Sounds.Click:Play()
-    
-    SettingsGui.Enabled = true
-    SettingsOverlay.BackgroundTransparency = 1
-    SettingsFrame.Position = UDim2.new(0.5, 0, -0.6, 0)
-    
-    Animate(SettingsOverlay, {BackgroundTransparency = 0.5}, 0.4)
-    Animate(SettingsFrame, {Position = UDim2.new(0.5, 0, 0.5, 0)}, 0.5, Enum.EasingStyle.Back)
-end)
-
--- Close Button
-CloseButton.MouseButton1Click:Connect(function()
-    if not ScriptRunning then return end
-    Sounds.Click:Play()
-    HideMainMenu()
-end)
-
 -- Search Input
 SearchInput:GetPropertyChangedSignal("Text"):Connect(function()
     if ScriptRunning then
@@ -2621,23 +2588,10 @@ SearchInput:GetPropertyChangedSignal("Text"):Connect(function()
     end
 end)
 
-SearchInput.Focused:Connect(function()
-    if ScriptRunning then
-        Animate(SearchBar, {BackgroundColor3 = Theme.SurfaceHover}, 0.25)
-    end
-end)
-
-SearchInput.FocusLost:Connect(function()
-    if ScriptRunning then
-        Animate(SearchBar, {BackgroundColor3 = Theme.Surface}, 0.25)
-    end
-end)
-
--- Keyboard Input (F4 only for open/close)
+-- Keyboard Input
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed or not ScriptRunning then return end
     
-    -- F4 - Toggle Menu
     if input.KeyCode == Enum.KeyCode.F4 then
         if IsAuthenticated then
             if IsWatching then
@@ -2667,6 +2621,20 @@ Players.PlayerAdded:Connect(function(player)
         if isAdmin and Config.AdminAlertEnabled and ScriptRunning then
             local roleName = GetAdminRole(player)
             ShowAdminAlert(player.DisplayName or player.Name, rank, roleName)
+        end
+    end)
+    
+    -- Connect chat for new player
+    player.Chatted:Connect(function(message)
+        if not ScriptRunning then return end
+        local isAdmin, rank = CheckIfAdmin(player)
+        if Config.AdminChatEnabled then
+            AddAdminChatMessage(
+                player.DisplayName or player.Name,
+                message,
+                rank,
+                isAdmin
+            )
         end
     end)
     
@@ -2706,16 +2674,6 @@ end)
 -- Character Respawn
 LocalPlayer.CharacterAdded:Connect(function(newCharacter)
     Character = newCharacter
-    
-    -- Re-setup knife hitbox for new character
-    task.wait(1)
-    if ScriptRunning and Config.KnifeHitboxEnabled then
-        for _, tool in pairs(newCharacter:GetChildren()) do
-            if tool:IsA("Tool") and tool.Name == "Knife" then
-                ExpandKnifeHitbox(tool)
-            end
-        end
-    end
 end)
 
 -- Beam Render Loop
@@ -2756,28 +2714,26 @@ end)
 
 pcall(function()
     StarterGui:SetCore('SendNotification', {
-        Title = "👁 Qwen Aimviewer v5.2",
-        Text = "Нажми F4 для открытия",
+        Title = "💬 Qwen Aimviewer v5.4",
+        Text = "Нажми F4 для открытия | Чат админов!",
         Duration = 4
     })
 end)
 
 print("")
 print("╔═══════════════════════════════════════════════════════╗")
-print("║        👁 QWEN AIMVIEWER PRO v5.2                     ║")
-print("║           Enhanced Edition                            ║")
+print("║        💬 QWEN AIMVIEWER PRO v5.4                     ║")
+print("║         Admin Chat Monitor Edition                    ║")
 print("╠═══════════════════════════════════════════════════════╣")
 print("║                                                       ║")
 print("║   🎮 Открыть/Закрыть: F4                              ║")
-print("║   🗑 Выгрузить: Через настройки                       ║")
+print("║   💬 Чат админов: Кнопка в меню                       ║")
 print("║                                                       ║")
-print("║   ✨ Новое в v5.2:                                    ║")
-print("║   • ESP обновляется каждую секунду                    ║")
-print("║   • Кнопка выгрузки в настройках                      ║")
-print("║   • 🔪 ХИТБОКС НОЖА (до 50 studs!)                    ║")
-print("║   • Красивые градиенты и анимации                     ║")
-print("║   • Плавающие частицы                                 ║")
-print("║   • Пульсирующие индикаторы                           ║")
+print("║   ✨ Новое в v5.4:                                    ║")
+print("║   • Мониторинг чата админов                           ║")
+print("║   • Уведомления о сообщениях                          ║")
+print("║   • Отдельное окно чата                               ║")
+print("║   • Сообщения всех игроков                            ║")
 print("║                                                       ║")
 print("╠═══════════════════════════════════════════════════════╣")
 print("║   📋 Группа админов: " .. ADMIN_GROUP_ID .. "                      ║")
