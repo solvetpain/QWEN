@@ -165,7 +165,7 @@ local function SaveCurrentConfig()
 end
 
 -- Admin Settings
-local ADMIN_GROUP_ID = 35699473
+local ADMIN_GROUP_ID = 367140785
 local ADMIN_MIN_RANK = 249
 local ADMIN_MAX_RANK = 255
 
@@ -2742,3 +2742,4 @@ print("╚═══════════════════════�
 print("")
 print("   ✅ Скрипт загружен! Удачной игры!")
 print("")
+
